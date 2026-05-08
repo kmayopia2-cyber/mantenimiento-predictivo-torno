@@ -18,10 +18,8 @@ import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 import joblib
 
-# ── CAMBIO 1: Imports de Firebase ──────────────────────────────────────────────
 import firebase_admin
 from firebase_admin import credentials, firestore
-# ───────────────────────────────────────────────────────────────────────────────
 
 import warnings
 warnings.filterwarnings('ignore')
@@ -163,32 +161,71 @@ def cargar_modelos() -> Tuple[Any, Any, Any, float, float, bool, Optional[str]]:
     except Exception as e:
         return None, None, None, 0.5, 0.5, False, str(e)
 
+# ============================================
+# CONFIGURACIÓN MQTT — Render (env vars) o local (st.secrets)
+# ============================================
 def obtener_config_mqtt() -> ConfigDict:
-    return {
-        "broker":   st.secrets["broker"]["url"],
-        "port":     int(st.secrets["broker"]["port"]),
-        "username": st.secrets["credenciales"]["username"],
-        "password": st.secrets["credenciales"]["password"],
-        "topicos":  {
-            "sensores":   st.secrets["topicos"]["sensores"],
-            "prediccion": st.secrets["topicos"]["prediccion"],
-            "estado":     st.secrets["topicos"]["estado"],
-            "alerta":     st.secrets["topicos"]["alerta"],
-            "aviso":      st.secrets["topicos"]["aviso"]
+    # Prioridad 1: Variables de entorno (Render)
+    if os.environ.get("HIVEMQ_BROKER"):
+        return {
+            "broker":   os.environ["HIVEMQ_BROKER"],
+            "port":     int(os.environ.get("HIVEMQ_PORT", "8883")),
+            "username": os.environ.get("HIVEMQ_USERNAME", ""),
+            "password": os.environ.get("HIVEMQ_PASSWORD", ""),
+            "topicos": {
+                "sensores":   os.environ.get("TOPICO_SENSORES",   "torno/sensores"),
+                "prediccion": os.environ.get("TOPICO_PREDICCION", "torno/prediccion"),
+                "estado":     os.environ.get("TOPICO_ESTADO",     "torno/estado"),
+                "alerta":     os.environ.get("TOPICO_ALERTA",     "torno/alerta"),
+                "aviso":      os.environ.get("TOPICO_AVISO",      "torno/aviso"),
+            }
         }
-    }
+    # Prioridad 2: Streamlit Secrets (local / Streamlit Cloud)
+    else:
+        return {
+            "broker":   st.secrets["broker"]["url"],
+            "port":     int(st.secrets["broker"]["port"]),
+            "username": st.secrets["credenciales"]["username"],
+            "password": st.secrets["credenciales"]["password"],
+            "topicos": {
+                "sensores":   st.secrets["topicos"]["sensores"],
+                "prediccion": st.secrets["topicos"]["prediccion"],
+                "estado":     st.secrets["topicos"]["estado"],
+                "alerta":     st.secrets["topicos"]["alerta"],
+                "aviso":      st.secrets["topicos"]["aviso"],
+            }
+        }
 
 modelo_xgb, modelo_rf, scaler, umbral_xgb, umbral_rf, modelos_ok, error_msg = cargar_modelos()
 
 # ============================================
-# CAMBIO 2: INICIALIZAR FIREBASE
+# INICIALIZAR FIREBASE — Render (env vars) o local (archivo JSON)
 # ============================================
 firebase_disponible = False
 db = None
 try:
     if not firebase_admin._apps:
-        cred = credentials.Certificate('firebase-key.json')
+        # Prioridad 1: Variables de entorno (Render)
+        if os.environ.get("FIREBASE_TYPE"):
+            firebase_creds = {
+                "type":                        os.environ["FIREBASE_TYPE"],
+                "project_id":                  os.environ["FIREBASE_PROJECT_ID"],
+                "private_key_id":              os.environ["FIREBASE_PRIVATE_KEY_ID"],
+                "private_key":                 os.environ["FIREBASE_PRIVATE_KEY"].replace("\\n", "\n"),
+                "client_email":                os.environ["FIREBASE_CLIENT_EMAIL"],
+                "client_id":                   os.environ["FIREBASE_CLIENT_ID"],
+                "auth_uri":                    os.environ["FIREBASE_AUTH_URI"],
+                "token_uri":                   os.environ["FIREBASE_TOKEN_URI"],
+                "auth_provider_x509_cert_url": os.environ["FIREBASE_AUTH_PROVIDER_X509_CERT_URL"],
+                "client_x509_cert_url":        os.environ["FIREBASE_CLIENT_X509_CERT_URL"],
+            }
+            cred = credentials.Certificate(firebase_creds)
+        # Prioridad 2: Archivo local (local / dev)
+        else:
+            cred = credentials.Certificate('firebase-key.json')
+
         firebase_admin.initialize_app(cred)
+
     db = firestore.client()
     firebase_disponible = True
     print("[FIREBASE] Conectado correctamente")
@@ -205,7 +242,7 @@ defaults = {
     'ultimo_resultado': None, 'lecturas_procesadas': 0, 'modo': "Simulacion",
     'temperaturas': [], 'rpms': [], 'torques': [], 'desgastes': [],
     'timestamps_hist': [],
-    'firebase_guardados': 0,   # contador de docs guardados en Firebase
+    'firebase_guardados': 0,
     'mqtt_queue': queue.Queue(),
 }
 for k, v in defaults.items():
@@ -325,7 +362,7 @@ def guardar_registro(resultado):
         pass
 
 # ============================================
-# CAMBIO 3: GUARDAR EN FIREBASE (solo avisos/alertas en producción)
+# GUARDAR EN FIREBASE (solo avisos/alertas en producción)
 # ============================================
 def guardar_en_firebase(resultado: ResultadoDict) -> None:
     """
@@ -335,12 +372,8 @@ def guardar_en_firebase(resultado: ResultadoDict) -> None:
     """
     if not firebase_disponible or db is None:
         return
-
-    # Solo guardar incidencias relevantes
     if resultado['votos'] == 0:
         return
-
-    # Solo en modo Producción
     if st.session_state.get('modo', '') != 'Produccion':
         return
 
@@ -361,7 +394,7 @@ def guardar_en_firebase(resultado: ResultadoDict) -> None:
             'estado':          resultado['estado'],
             'accion':          resultado['accion'],
             'nivel':           'alerta' if resultado['votos'] == 2 else 'aviso',
-            'creado': firestore.SERVER_TIMESTAMP,  # type: ignore
+            'creado':          firestore.SERVER_TIMESTAMP,  # type: ignore
         })
         st.session_state.firebase_guardados += 1
         print(f"[FIREBASE] Guardado: {resultado['estado']}")
@@ -398,14 +431,13 @@ def procesar_lectura(datos, client=None, config=None):
         if len(st.session_state[lista]) > 60:
             st.session_state[lista] = st.session_state[lista][-60:]
 
-    st.session_state.ultimo_resultado   = resultado
+    st.session_state.ultimo_resultado    = resultado
     st.session_state.lecturas_procesadas += 1
 
     if client is not None and client.is_connected() and config is not None:
         publicar_resultado(client, config, resultado)
 
     guardar_registro(resultado)
-    # CAMBIO 4: llamar a Firebase después del registro local
     guardar_en_firebase(resultado)
 
     return resultado
@@ -416,7 +448,6 @@ def procesar_lectura(datos, client=None, config=None):
 st.markdown('<p class="main-header">⚙ SISTEMA DE MANTENIMIENTO PREDICTIVO</p>', unsafe_allow_html=True)
 st.markdown('<p class="sub-header">TORNO HORIZONTAL  ◆  CONSENSO XGBOOST + RANDOM FOREST  ◆  HIVEMQ CLOUD</p>', unsafe_allow_html=True)
 
-# Badge de estado Firebase junto al header
 if firebase_disponible:
     st.markdown(
         '<div style="text-align:center;margin-bottom:8px;">'
@@ -478,9 +509,9 @@ with st.sidebar:
             for k in ['historial','probabilidades_xgb','probabilidades_rf',
                       'temperaturas','rpms','torques','desgastes','timestamps_hist']:
                 st.session_state[k] = []
-            st.session_state.contador_normal   = 0
-            st.session_state.contador_aviso    = 0
-            st.session_state.contador_alerta   = 0
+            st.session_state.contador_normal     = 0
+            st.session_state.contador_aviso      = 0
+            st.session_state.contador_alerta     = 0
             st.session_state.lecturas_procesadas = 0
             st.rerun()
     else:
@@ -531,10 +562,9 @@ with st.sidebar:
     st.markdown(f"🟡 Aviso:  **{pct_aviso:.1f}%**")
     st.markdown(f"🔴 Alerta: **{pct_alerta:.1f}%**")
 
-    # Estado Firebase en sidebar
     st.markdown("---")
     if firebase_disponible:
-        st.success(f"🔥 Firebase: Conectado")
+        st.success("🔥 Firebase: Conectado")
         st.metric("Eventos en Firestore", st.session_state.firebase_guardados)
         st.caption("Solo avisos y alertas en modo Producción")
     else:
@@ -664,7 +694,6 @@ with col_pred:
 
         votos = u['votos']
         colores_voto = {0:"#00e676", 1:"#ffd740", 2:"#ff5252"}
-        # Indicador de si fue guardado en Firebase
         firebase_nota = ""
         if firebase_disponible and votos > 0 and st.session_state.modo == 'Produccion':
             firebase_nota = '<div style="font-size:10px;color:#ffc107;margin-top:6px;">🔥 Evento guardado en Firestore</div>'
