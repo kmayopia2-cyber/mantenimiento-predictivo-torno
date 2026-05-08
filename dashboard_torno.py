@@ -165,7 +165,6 @@ def cargar_modelos() -> Tuple[Any, Any, Any, float, float, bool, Optional[str]]:
 # CONFIGURACIÓN MQTT — Render (env vars) o local (st.secrets)
 # ============================================
 def obtener_config_mqtt() -> ConfigDict:
-    # Prioridad 1: Variables de entorno (Render)
     if os.environ.get("HIVEMQ_BROKER"):
         return {
             "broker":   os.environ["HIVEMQ_BROKER"],
@@ -180,7 +179,6 @@ def obtener_config_mqtt() -> ConfigDict:
                 "aviso":      os.environ.get("TOPICO_AVISO",      "torno/aviso"),
             }
         }
-    # Prioridad 2: Streamlit Secrets (local / Streamlit Cloud)
     else:
         return {
             "broker":   st.secrets["broker"]["url"],
@@ -205,7 +203,6 @@ firebase_disponible = False
 db = None
 try:
     if not firebase_admin._apps:
-        # Prioridad 1: Variables de entorno (Render)
         if os.environ.get("FIREBASE_TYPE"):
             firebase_creds = {
                 "type":                        os.environ["FIREBASE_TYPE"],
@@ -220,7 +217,6 @@ try:
                 "client_x509_cert_url":        os.environ["FIREBASE_CLIENT_X509_CERT_URL"],
             }
             cred = credentials.Certificate(firebase_creds)
-        # Prioridad 2: Archivo local (local / dev)
         else:
             cred = credentials.Certificate('firebase-key.json')
 
@@ -365,11 +361,6 @@ def guardar_registro(resultado):
 # GUARDAR EN FIREBASE (solo avisos/alertas en producción)
 # ============================================
 def guardar_en_firebase(resultado: ResultadoDict) -> None:
-    """
-    Guarda SOLO AVISOS (votos=1) y ALERTAS (votos=2) en Firebase Firestore.
-    - No guarda operaciones normales (votos=0).
-    - Solo guarda en modo Producción, no en simulación.
-    """
     if not firebase_disponible or db is None:
         return
     if resultado['votos'] == 0:
@@ -402,7 +393,7 @@ def guardar_en_firebase(resultado: ResultadoDict) -> None:
         print(f"[FIREBASE] Error al guardar: {e}")
 
 # ============================================
-# PROCESAR LECTURA (llamar SOLO desde el hilo principal de Streamlit)
+# PROCESAR LECTURA
 # ============================================
 def procesar_lectura(datos, client=None, config=None):
     resultado = predecir_consenso(datos)
@@ -541,7 +532,6 @@ with st.sidebar:
             else:
                 st.error(f"❌ Error: {config}")
 
-    # Conexión MQTT opcional en modo simulación
     if es_simulacion and not st.session_state.mqtt_conectado:
         st.markdown("---")
         if st.button("📡 Conectar MQTT (opcional)", use_container_width=True):
@@ -783,7 +773,7 @@ if len(st.session_state.probabilidades_xgb) > 1:
                     bgcolor='rgba(0,0,0,0)', bordercolor='rgba(0,0,0,0)'),
         yaxis=dict(range=[0,1.05], title="Probabilidad de Fallo",
                    gridcolor='rgba(30,58,95,0.4)', tickfont=dict(color='#4a90d9', size=10),
-                   titlefont=dict(color='#4a90d9', size=12), zeroline=False),
+                   title_font=dict(color='#4a90d9', size=12), zeroline=False),  # ← CAMBIADO
         xaxis=dict(title="Número de Lectura",
                    gridcolor='rgba(30,58,95,0.4)', tickfont=dict(color='#4a90d9', size=10),
                    titlefont=dict(color='#4a90d9', size=12)),
@@ -895,7 +885,7 @@ if st.session_state.lecturas_procesadas > 0:
                 legend=dict(font=dict(color='#a8c8e8', family='Exo 2', size=11), bgcolor='rgba(0,0,0,0)'),
                 yaxis=dict(range=[0,115], gridcolor='rgba(30,58,95,0.4)',
                            tickfont=dict(color='#4a90d9', size=9),
-                           title='Probabilidad (%)', titlefont=dict(color='#4a90d9', size=11),
+                           title='Probabilidad (%)', title_font=dict(color='#4a90d9', size=11),  # ← CAMBIADO
                            zeroline=False),
                 xaxis=dict(gridcolor='rgba(30,58,95,0.4)', tickfont=dict(color='#4a90d9', size=10))
             )
