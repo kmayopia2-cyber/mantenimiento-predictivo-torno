@@ -1,0 +1,6 @@
+firebase-key.json
+.streamlit/secrets.toml
+.env
+__pycache__/
+*.pyc
+output/
