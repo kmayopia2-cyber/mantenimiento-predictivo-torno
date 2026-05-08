@@ -775,8 +775,8 @@ if len(st.session_state.probabilidades_xgb) > 1:
                    gridcolor='rgba(30,58,95,0.4)', tickfont=dict(color='#4a90d9', size=10),
                    title_font=dict(color='#4a90d9', size=12), zeroline=False),  # ← CAMBIADO
         xaxis=dict(title="Número de Lectura",
-                   gridcolor='rgba(30,58,95,0.4)', tickfont=dict(color='#4a90d9', size=10),
-                   titlefont=dict(color='#4a90d9', size=12)),
+                  gridcolor='rgba(30,58,95,0.4)', tickfont=dict(color='#4a90d9', size=10),
+                   title_font=dict(color='#4a90d9', size=12)),
         font=dict(family='Exo 2')
     )
     st.plotly_chart(fig_prob, use_container_width=True)
