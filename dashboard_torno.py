@@ -1,7 +1,6 @@
 """
 DASHBOARD DE MANTENIMIENTO PREDICTIVO
 Torno Horizontal - Sistema de Consenso XGBoost + Random Forest
-Diseño: Fondo oscuro industrial, tarjetas semafóricas, múltiples gráficos
 """
 
 import streamlit as st
@@ -20,6 +19,9 @@ import joblib
 
 import firebase_admin
 from firebase_admin import credentials, firestore
+
+import gspread
+from google.oauth2.service_account import Credentials as GoogleCredentials
 
 import warnings
 warnings.filterwarnings('ignore')
@@ -42,99 +44,305 @@ st.set_page_config(
 )
 
 # ============================================
-# CSS PROFESIONAL - TEMA OSCURO INDUSTRIAL
+# CSS PROFESIONAL - TEMA CLARO INDUSTRIAL
 # ============================================
 st.markdown("""
 <style>
-    @import url('https://fonts.googleapis.com/css2?family=Rajdhani:wght@400;500;600;700&family=Share+Tech+Mono&family=Exo+2:wght@300;400;600;700&display=swap');
+    @import url('https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@400;500;600;700;800&family=Barlow:wght@300;400;500;600&family=Share+Tech+Mono&display=swap');
 
+    /* ── FONDO GENERAL: blanco roto industrial ── */
     .stApp {
-        background: linear-gradient(135deg, #0a0e1a 0%, #0d1b2a 40%, #0a1628 70%, #060d18 100%);
-        font-family: 'Exo 2', sans-serif;
+        background: #f0f2f5;
+        font-family: 'Barlow', sans-serif;
     }
-    [data-testid="stSidebar"] {
-        background: linear-gradient(180deg, #060d18 0%, #0a1525 100%) !important;
-        border-right: 1px solid #1e3a5f !important;
-    }
-    [data-testid="stSidebar"] * { color: #a8c8e8 !important; }
 
+    /* ── SIDEBAR ── */
+    [data-testid="stSidebar"] {
+        background: #1a2332 !important;
+        border-right: 3px solid #2563eb !important;
+    }
+    [data-testid="stSidebar"] * {
+        color: #cbd5e1 !important;
+    }
+    [data-testid="stSidebar"] h1,
+    [data-testid="stSidebar"] h2,
+    [data-testid="stSidebar"] h3 {
+        color: #ffffff !important;
+    }
+    [data-testid="stSidebar"] .stButton > button {
+        background: #2563eb !important;
+        color: #ffffff !important;
+        border: none !important;
+    }
+    [data-testid="stSidebar"] .stButton > button:hover {
+        background: #1d4ed8 !important;
+    }
+
+    /* ── HEADER ── */
     .main-header {
-        font-family: 'Rajdhani', sans-serif;
-        font-size: 36px; font-weight: 700; color: #00d4ff;
-        text-align: center; padding: 15px 0 5px 0;
-        letter-spacing: 4px; text-transform: uppercase;
-        text-shadow: 0 0 30px rgba(0,212,255,0.5), 0 0 60px rgba(0,212,255,0.2);
+        font-family: 'Barlow Condensed', sans-serif;
+        font-size: 38px;
+        font-weight: 800;
+        color: #0f172a;
+        text-align: center;
+        padding: 18px 0 4px 0;
+        letter-spacing: 5px;
+        text-transform: uppercase;
+        border-bottom: 4px solid #2563eb;
+        margin-bottom: 4px;
     }
     .sub-header {
         font-family: 'Share Tech Mono', monospace;
-        font-size: 13px; color: #4a90d9;
-        text-align: center; margin-bottom: 20px; letter-spacing: 2px;
+        font-size: 12px;
+        color: #475569;
+        text-align: center;
+        margin-bottom: 20px;
+        letter-spacing: 2px;
     }
+
+    /* ── DIVISOR ── */
     .neon-divider {
-        height: 2px;
-        background: linear-gradient(90deg, transparent, #00d4ff, #0066ff, #00d4ff, transparent);
-        margin: 10px 0 20px 0;
-        box-shadow: 0 0 8px rgba(0,212,255,0.6);
-    }
-    .card-base { border-radius:12px; padding:20px; margin:5px 0; border:1px solid; position:relative; overflow:hidden; }
-
-    .card-normal  { background:linear-gradient(135deg,#0a2a1a 0%,#0d3520 100%); border-color:#00c853; box-shadow:0 0 20px rgba(0,200,83,0.25),inset 0 0 30px rgba(0,200,83,0.05); }
-    .card-normal  .estado-titulo { color:#00e676; font-family:'Rajdhani',sans-serif; font-size:22px; font-weight:700; letter-spacing:2px; text-shadow:0 0 15px rgba(0,230,118,0.7); }
-    .card-normal  .estado-icon   { font-size:40px; }
-    .card-normal  .accion-text   { color:#69f0ae; font-size:13px; }
-
-    .card-aviso   { background:linear-gradient(135deg,#2a1a00 0%,#3d2800 100%); border-color:#ffab00; box-shadow:0 0 20px rgba(255,171,0,0.25),inset 0 0 30px rgba(255,171,0,0.05); animation:pulse-yellow 2s infinite; }
-    .card-aviso   .estado-titulo { color:#ffd740; font-family:'Rajdhani',sans-serif; font-size:22px; font-weight:700; letter-spacing:2px; text-shadow:0 0 15px rgba(255,215,64,0.7); }
-    .card-aviso   .estado-icon   { font-size:40px; }
-    .card-aviso   .accion-text   { color:#ffe57f; font-size:13px; }
-
-    .card-alerta  { background:linear-gradient(135deg,#2a0000 0%,#3d0000 100%); border-color:#ff1744; box-shadow:0 0 20px rgba(255,23,68,0.35),inset 0 0 30px rgba(255,23,68,0.08); animation:pulse-red 1s infinite; }
-    .card-alerta  .estado-titulo { color:#ff5252; font-family:'Rajdhani',sans-serif; font-size:22px; font-weight:700; letter-spacing:2px; text-shadow:0 0 15px rgba(255,82,82,0.9); }
-    .card-alerta  .estado-icon   { font-size:40px; }
-    .card-alerta  .accion-text   { color:#ff8a80; font-size:13px; }
-
-    @keyframes pulse-red    { 0%,100%{box-shadow:0 0 20px rgba(255,23,68,0.35);} 50%{box-shadow:0 0 40px rgba(255,23,68,0.7),0 0 60px rgba(255,23,68,0.3);} }
-    @keyframes pulse-yellow { 0%,100%{box-shadow:0 0 20px rgba(255,171,0,0.25);} 50%{box-shadow:0 0 35px rgba(255,171,0,0.5),0 0 50px rgba(255,171,0,0.2);} }
-
-    .counter-card-normal { background:linear-gradient(135deg,#0a2a1a 0%,#0d3520 100%); border:1px solid #00c853; border-radius:12px; padding:20px; text-align:center; box-shadow:0 0 15px rgba(0,200,83,0.2); }
-    .counter-card-aviso  { background:linear-gradient(135deg,#2a1a00 0%,#3d2800 100%); border:1px solid #ffab00; border-radius:12px; padding:20px; text-align:center; box-shadow:0 0 15px rgba(255,171,0,0.2); }
-    .counter-card-alerta { background:linear-gradient(135deg,#2a0000 0%,#3d0000 100%); border:1px solid #ff1744; border-radius:12px; padding:20px; text-align:center; box-shadow:0 0 15px rgba(255,23,68,0.2); }
-
-    .counter-number-normal { font-family:'Rajdhani',sans-serif; font-size:52px; font-weight:700; color:#00e676; text-shadow:0 0 20px rgba(0,230,118,0.6); line-height:1; }
-    .counter-number-aviso  { font-family:'Rajdhani',sans-serif; font-size:52px; font-weight:700; color:#ffd740; text-shadow:0 0 20px rgba(255,215,64,0.6); line-height:1; }
-    .counter-number-alerta { font-family:'Rajdhani',sans-serif; font-size:52px; font-weight:700; color:#ff5252; text-shadow:0 0 20px rgba(255,82,82,0.6); line-height:1; }
-
-    .counter-label        { font-family:'Exo 2',sans-serif; font-size:11px; letter-spacing:2px; text-transform:uppercase; margin-top:8px; font-weight:600; }
-    .counter-label-normal { color:#69f0ae; }
-    .counter-label-aviso  { color:#ffe57f; }
-    .counter-label-alerta { color:#ff8a80; }
-    .counter-icon         { font-size:28px; margin-bottom:8px; display:block; }
-
-    .section-title { font-family:'Rajdhani',sans-serif; font-size:16px; font-weight:700; color:#4a90d9; letter-spacing:3px; text-transform:uppercase; margin-bottom:12px; display:flex; align-items:center; gap:8px; }
-    .section-title::before { content:''; display:inline-block; width:4px; height:16px; background:#00d4ff; border-radius:2px; box-shadow:0 0 8px rgba(0,212,255,0.6); }
-
-    .pred-model-name { font-family:'Rajdhani',sans-serif; font-size:14px; letter-spacing:2px; color:#4a90d9; text-transform:uppercase; margin-bottom:5px; }
-    .pred-value-safe   { color:#00e676; text-shadow:0 0 15px rgba(0,230,118,0.5); }
-    .pred-value-danger { color:#ff5252; text-shadow:0 0 15px rgba(255,82,82,0.5); }
-
-    .firebase-badge {
-        display:inline-flex; align-items:center; gap:6px;
-        background:rgba(255,193,7,0.1); border:1px solid rgba(255,193,7,0.3);
-        border-radius:6px; padding:4px 10px;
-        font-family:'Share Tech Mono',monospace; font-size:11px; color:#ffc107;
-        letter-spacing:1px;
-    }
-    .firebase-badge-ok {
-        background:rgba(0,200,83,0.1); border-color:rgba(0,200,83,0.3); color:#00e676;
+        height: 3px;
+        background: linear-gradient(90deg, transparent, #2563eb, #0ea5e9, #2563eb, transparent);
+        margin: 14px 0 20px 0;
     }
 
-    .footer { font-family:'Share Tech Mono',monospace; text-align:center; color:#2a5080; font-size:11px; padding:15px; letter-spacing:1px; border-top:1px solid #1e3a5f; margin-top:20px; }
+    /* ── TARJETAS DE ESTADO ── */
+    .card-base {
+        border-radius: 12px;
+        padding: 20px;
+        margin: 5px 0;
+        border-left: 6px solid;
+        position: relative;
+        overflow: hidden;
+    }
 
-    .stMetric label { color:#4a90d9 !important; font-family:'Exo 2',sans-serif !important; }
-    .stMetric [data-testid="metric-container"] { background:rgba(10,21,37,0.6); border:1px solid #1e3a5f; border-radius:8px; padding:10px; }
-    h1,h2,h3 { color:#a8c8e8 !important; font-family:'Rajdhani',sans-serif !important; }
-    .stButton > button { font-family:'Rajdhani',sans-serif !important; font-weight:600 !important; letter-spacing:2px !important; text-transform:uppercase !important; border-radius:6px !important; }
-    [data-testid="stMarkdownContainer"] p { color:#a8c8e8; }
+    /* NORMAL */
+    .card-normal {
+        background: #ffffff;
+        border-left-color: #16a34a;
+        box-shadow: 0 4px 20px rgba(22,163,74,0.15), 0 1px 4px rgba(0,0,0,0.08);
+    }
+    .card-normal .estado-titulo {
+        color: #15803d;
+        font-family: 'Barlow Condensed', sans-serif;
+        font-size: 22px;
+        font-weight: 700;
+        letter-spacing: 2px;
+    }
+    .card-normal .accion-text { color: #166534; font-size: 13px; font-weight: 500; }
+
+    /* AVISO */
+    .card-aviso {
+        background: #ffffff;
+        border-left-color: #d97706;
+        box-shadow: 0 4px 20px rgba(217,119,6,0.15), 0 1px 4px rgba(0,0,0,0.08);
+        animation: pulse-yellow-light 2.5s infinite;
+    }
+    .card-aviso .estado-titulo {
+        color: #b45309;
+        font-family: 'Barlow Condensed', sans-serif;
+        font-size: 22px;
+        font-weight: 700;
+        letter-spacing: 2px;
+    }
+    .card-aviso .accion-text { color: #92400e; font-size: 13px; font-weight: 500; }
+
+    /* ALERTA */
+    .card-alerta {
+        background: #ffffff;
+        border-left-color: #dc2626;
+        box-shadow: 0 4px 20px rgba(220,38,38,0.2), 0 1px 4px rgba(0,0,0,0.08);
+        animation: pulse-red-light 1s infinite;
+    }
+    .card-alerta .estado-titulo {
+        color: #b91c1c;
+        font-family: 'Barlow Condensed', sans-serif;
+        font-size: 22px;
+        font-weight: 700;
+        letter-spacing: 2px;
+    }
+    .card-alerta .accion-text { color: #7f1d1d; font-size: 13px; font-weight: 600; }
+
+    .estado-icon { font-size: 38px; }
+
+    @keyframes pulse-red-light {
+        0%,100% { box-shadow: 0 4px 20px rgba(220,38,38,0.2); }
+        50%      { box-shadow: 0 4px 30px rgba(220,38,38,0.45), 0 0 0 4px rgba(220,38,38,0.08); }
+    }
+    @keyframes pulse-yellow-light {
+        0%,100% { box-shadow: 0 4px 20px rgba(217,119,6,0.15); }
+        50%      { box-shadow: 0 4px 28px rgba(217,119,6,0.35); }
+    }
+
+    /* ── CONTADORES ── */
+    .counter-card-normal {
+        background: #ffffff;
+        border: 2px solid #16a34a;
+        border-radius: 14px;
+        padding: 22px;
+        text-align: center;
+        box-shadow: 0 4px 16px rgba(22,163,74,0.12);
+    }
+    .counter-card-aviso {
+        background: #ffffff;
+        border: 2px solid #d97706;
+        border-radius: 14px;
+        padding: 22px;
+        text-align: center;
+        box-shadow: 0 4px 16px rgba(217,119,6,0.12);
+    }
+    .counter-card-alerta {
+        background: #ffffff;
+        border: 2px solid #dc2626;
+        border-radius: 14px;
+        padding: 22px;
+        text-align: center;
+        box-shadow: 0 4px 16px rgba(220,38,38,0.12);
+    }
+
+    .counter-number-normal { font-family:'Barlow Condensed',sans-serif; font-size:56px; font-weight:800; color:#15803d; line-height:1; }
+    .counter-number-aviso  { font-family:'Barlow Condensed',sans-serif; font-size:56px; font-weight:800; color:#b45309; line-height:1; }
+    .counter-number-alerta { font-family:'Barlow Condensed',sans-serif; font-size:56px; font-weight:800; color:#b91c1c; line-height:1; }
+
+    .counter-label        { font-family:'Barlow Condensed',sans-serif; font-size:13px; letter-spacing:2px; text-transform:uppercase; margin-top:8px; font-weight:700; }
+    .counter-label-normal { color:#166534; }
+    .counter-label-aviso  { color:#92400e; }
+    .counter-label-alerta { color:#7f1d1d; }
+    .counter-icon         { font-size:28px; margin-bottom:6px; display:block; }
+    .counter-sub          { font-size:11px; color:#64748b; margin-top:5px; font-family:'Barlow',sans-serif; }
+
+    /* ── TÍTULOS DE SECCIÓN ── */
+    .section-title {
+        font-family: 'Barlow Condensed', sans-serif;
+        font-size: 15px;
+        font-weight: 700;
+        color: #1e40af;
+        letter-spacing: 3px;
+        text-transform: uppercase;
+        margin-bottom: 12px;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+    }
+    .section-title::before {
+        content: '';
+        display: inline-block;
+        width: 5px;
+        height: 18px;
+        background: #2563eb;
+        border-radius: 3px;
+    }
+
+    /* ── TARJETA SENSOR ── */
+    .sensor-row {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 10px 15px;
+        margin: 4px 0;
+        border-radius: 8px;
+        background: #ffffff;
+        border: 1px solid #e2e8f0;
+        box-shadow: 0 1px 4px rgba(0,0,0,0.05);
+    }
+    .sensor-label {
+        color: #1e40af;
+        font-size: 11px;
+        letter-spacing: 1px;
+        text-transform: uppercase;
+        font-family: 'Barlow Condensed', sans-serif;
+        font-weight: 600;
+        margin-left: 8px;
+    }
+    .sensor-sub { color: #94a3b8; font-size: 10px; margin-left: 30px; margin-top: 2px; }
+    .sensor-value {
+        font-family: 'Share Tech Mono', monospace;
+        color: #0f172a;
+        font-size: 18px;
+        font-weight: bold;
+    }
+
+    /* ── PREDICCIÓN MODELOS ── */
+    .pred-card {
+        background: #ffffff;
+        border: 1px solid #e2e8f0;
+        border-radius: 10px;
+        padding: 16px;
+        margin-bottom: 10px;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+    }
+    .pred-model-name {
+        font-family: 'Barlow Condensed', sans-serif;
+        font-size: 13px;
+        letter-spacing: 2px;
+        color: #64748b;
+        text-transform: uppercase;
+        font-weight: 700;
+        margin-bottom: 4px;
+    }
+    .pred-value-safe   { color: #15803d; font-family:'Share Tech Mono',monospace; font-size:34px; font-weight:bold; line-height:1.1; }
+    .pred-value-danger { color: #b91c1c; font-family:'Share Tech Mono',monospace; font-size:34px; font-weight:bold; line-height:1.1; }
+
+    /* ── BADGE FIREBASE / SHEETS ── */
+    .badge {
+        display: inline-flex; align-items: center; gap: 6px;
+        border-radius: 6px; padding: 5px 12px;
+        font-family: 'Share Tech Mono', monospace; font-size: 11px;
+        letter-spacing: 1px; font-weight: bold;
+    }
+    .badge-warning { background:#fef3c7; border:2px solid #d97706; color:#92400e; }
+    .badge-ok      { background:#dcfce7; border:2px solid #16a34a; color:#166534; }
+    .badge-info    { background:#dbeafe; border:2px solid #2563eb; color:#1e40af; }
+
+    /* ── LEYENDA / FOOTER ── */
+    .legend-box {
+        background: #ffffff;
+        border: 1px solid #e2e8f0;
+        border-radius: 12px;
+        padding: 18px 28px;
+        margin: 16px 0;
+        font-family: 'Barlow', sans-serif;
+        font-size: 12px;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+    }
+    .legend-title { color:#1e40af; font-size:11px; letter-spacing:2px; text-transform:uppercase; margin-bottom:14px; font-weight:700; font-family:'Barlow Condensed',sans-serif; }
+
+    .footer {
+        font-family: 'Share Tech Mono', monospace;
+        text-align: center;
+        color: #94a3b8;
+        font-size: 11px;
+        padding: 16px;
+        letter-spacing: 1px;
+        border-top: 2px solid #e2e8f0;
+        margin-top: 20px;
+        background: #ffffff;
+        border-radius: 0 0 8px 8px;
+    }
+
+    /* ── STREAMLIT OVERRIDES ── */
+    .stMetric label { color: #1e40af !important; font-family:'Barlow Condensed',sans-serif !important; font-weight:600 !important; letter-spacing:1px !important; }
+    .stMetric [data-testid="metric-container"] { background:#ffffff; border:1px solid #e2e8f0; border-radius:8px; padding:12px; box-shadow:0 2px 6px rgba(0,0,0,0.05); }
+    .stMetric [data-testid="stMetricValue"] { color:#0f172a !important; font-family:'Barlow Condensed',sans-serif !important; font-weight:800 !important; }
+    h1,h2,h3 { color:#0f172a !important; font-family:'Barlow Condensed',sans-serif !important; }
+    .stButton > button {
+        font-family: 'Barlow Condensed', sans-serif !important;
+        font-weight: 700 !important;
+        letter-spacing: 2px !important;
+        text-transform: uppercase !important;
+        border-radius: 8px !important;
+        background: #2563eb !important;
+        color: #ffffff !important;
+        border: none !important;
+    }
+    .stButton > button:hover { background: #1d4ed8 !important; }
+    [data-testid="stMarkdownContainer"] p { color: #334155; }
+    .stDataFrame { border: 1px solid #e2e8f0 !important; border-radius: 8px !important; }
+    .stAlert { border-radius: 8px !important; }
+
+    /* Fondo de plotly charts */
+    .js-plotly-plot { border-radius: 10px; overflow: hidden; box-shadow: 0 2px 10px rgba(0,0,0,0.07); }
 </style>
 """, unsafe_allow_html=True)
 
@@ -229,6 +437,51 @@ except Exception as e:
     print(f"[FIREBASE] No disponible: {e}")
 
 # ============================================
+# INICIALIZAR GOOGLE SHEETS
+# ============================================
+sheets_disponible = False
+google_sheet = None
+try:
+    SCOPES = ['https://www.googleapis.com/auth/spreadsheets']
+
+    if os.environ.get("FIREBASE_TYPE"):
+        # Render: usar credenciales de Firebase desde env vars
+        sheets_creds = {
+            "type": os.environ["FIREBASE_TYPE"],
+            "project_id": os.environ["FIREBASE_PROJECT_ID"],
+            "private_key_id": os.environ["FIREBASE_PRIVATE_KEY_ID"],
+            "private_key": os.environ["FIREBASE_PRIVATE_KEY"].replace("\\n", "\n"),
+            "client_email": os.environ["FIREBASE_CLIENT_EMAIL"],
+            "client_id": os.environ["FIREBASE_CLIENT_ID"],
+            "auth_uri": os.environ["FIREBASE_AUTH_URI"],
+            "token_uri": os.environ["FIREBASE_TOKEN_URI"],
+            "auth_provider_x509_cert_url": os.environ["FIREBASE_AUTH_PROVIDER_X509_CERT_URL"],
+            "client_x509_cert_url": os.environ["FIREBASE_CLIENT_X509_CERT_URL"],
+        }
+        creds_sheets = GoogleCredentials.from_service_account_info(sheets_creds, scopes=SCOPES)
+    else:
+        # Local: usar el archivo firebase-key.json
+        creds_sheets = GoogleCredentials.from_service_account_file('firebase-key.json', scopes=SCOPES)
+
+    client_gs = gspread.authorize(creds_sheets)
+    google_sheet = client_gs.open_by_url(
+        'https://docs.google.com/spreadsheets/d/1UC0AS6yJ5FBlmbYLJMczg_lt8F1oQrzQGC78u0vH4-I'
+    ).sheet1
+
+    # Si la primera fila está vacía, escribir encabezados
+    if google_sheet.cell(1, 1).value is None:
+        encabezados = [
+            'Fecha', 'Hora', 'Temp (K)', 'Temp (°C)', 'RPM', 'Torque (Nm)',
+            'Desgaste (min)', 'Tipo', 'XGBoost', 'Random Forest', 'Votos', 'Estado', 'Accion'
+        ]
+        google_sheet.append_row(encabezados)
+
+    sheets_disponible = True
+    print("[SHEETS] Conectado correctamente")
+except Exception as e:
+    print(f"[SHEETS] No disponible: {e}")
+
+# ============================================
 # VARIABLES DE SESIÓN
 # ============================================
 defaults = {
@@ -239,6 +492,7 @@ defaults = {
     'temperaturas': [], 'rpms': [], 'torques': [], 'desgastes': [],
     'timestamps_hist': [],
     'firebase_guardados': 0,
+    'sheets_guardados': 0,
     'mqtt_queue': queue.Queue(),
 }
 for k, v in defaults.items():
@@ -393,6 +647,39 @@ def guardar_en_firebase(resultado: ResultadoDict) -> None:
         print(f"[FIREBASE] Error al guardar: {e}")
 
 # ============================================
+# GUARDAR EN GOOGLE SHEETS (todas las lecturas en producción)
+# ============================================
+def guardar_en_sheets(resultado: ResultadoDict) -> None:
+    """Guarda TODAS las lecturas en Google Sheets, solo en modo Produccion."""
+    if not sheets_disponible or google_sheet is None:
+        return
+
+    if st.session_state.get('modo', '') != 'Produccion':
+        return
+
+    try:
+        fila = [
+            resultado['fecha'],
+            resultado['timestamp'],
+            resultado['temperatura'],
+            round(resultado['temperatura'] - 273.15, 2),
+            resultado['rpm'],
+            resultado['torque'],
+            resultado['desgaste'],
+            resultado['tipo'],
+            resultado['proba_xgb'],
+            resultado['proba_rf'],
+            resultado['votos'],
+            resultado['estado'],
+            resultado['accion']
+        ]
+        google_sheet.append_row(fila)
+        st.session_state.sheets_guardados += 1
+        print(f"[SHEETS] Guardado: {resultado['estado']}")
+    except Exception as e:
+        print(f"[SHEETS] Error al guardar: {e}")
+
+# ============================================
 # PROCESAR LECTURA
 # ============================================
 def procesar_lectura(datos, client=None, config=None):
@@ -430,6 +717,7 @@ def procesar_lectura(datos, client=None, config=None):
 
     guardar_registro(resultado)
     guardar_en_firebase(resultado)
+    guardar_en_sheets(resultado)  # NUEVO: guardar en Google Sheets
 
     return resultado
 
@@ -439,20 +727,18 @@ def procesar_lectura(datos, client=None, config=None):
 st.markdown('<p class="main-header">⚙ SISTEMA DE MANTENIMIENTO PREDICTIVO</p>', unsafe_allow_html=True)
 st.markdown('<p class="sub-header">TORNO HORIZONTAL  ◆  CONSENSO XGBOOST + RANDOM FOREST  ◆  HIVEMQ CLOUD</p>', unsafe_allow_html=True)
 
-if firebase_disponible:
-    st.markdown(
-        '<div style="text-align:center;margin-bottom:8px;">'
-        '<span class="firebase-badge firebase-badge-ok">🔥 FIREBASE CONECTADO</span>'
-        '</div>',
-        unsafe_allow_html=True
-    )
-else:
-    st.markdown(
-        '<div style="text-align:center;margin-bottom:8px;">'
-        '<span class="firebase-badge">🔥 FIREBASE NO DISPONIBLE</span>'
-        '</div>',
-        unsafe_allow_html=True
-    )
+# Badges de estado
+badge_cols = st.columns([1, 1, 1, 3])
+with badge_cols[0]:
+    if firebase_disponible:
+        st.markdown('<span class="badge badge-ok">🔥 FIREBASE ACTIVO</span>', unsafe_allow_html=True)
+    else:
+        st.markdown('<span class="badge badge-warning">🔥 FIREBASE INACTIVO</span>', unsafe_allow_html=True)
+with badge_cols[1]:
+    if sheets_disponible:
+        st.markdown('<span class="badge badge-ok">📊 SHEETS ACTIVO</span>', unsafe_allow_html=True)
+    else:
+        st.markdown('<span class="badge badge-warning">📊 SHEETS INACTIVO</span>', unsafe_allow_html=True)
 
 st.markdown('<div class="neon-divider"></div>', unsafe_allow_html=True)
 
@@ -560,6 +846,13 @@ with st.sidebar:
     else:
         st.warning("🔥 Firebase: No disponible")
 
+    if sheets_disponible:
+        st.success("📊 Google Sheets: Conectado")
+        st.metric("Filas en Sheets", st.session_state.sheets_guardados)
+        st.caption("Todas las lecturas en modo Producción")
+    else:
+        st.warning("📊 Google Sheets: No disponible")
+
     if st.session_state.mqtt_conectado:
         st.success("📡 MQTT: Conectado")
     else:
@@ -567,7 +860,7 @@ with st.sidebar:
 
     if st.button("🔄 RESET CONTADORES", use_container_width=True):
         for k in ['contador_normal','contador_aviso','contador_alerta',
-                  'lecturas_procesadas','firebase_guardados']:
+                  'lecturas_procesadas','firebase_guardados','sheets_guardados']:
             st.session_state[k] = 0
         for k in ['probabilidades_xgb','probabilidades_rf','temperaturas',
                   'rpms','torques','desgastes','timestamps_hist']:
@@ -590,34 +883,34 @@ with col_estado:
                 <span class="estado-titulo">{u['estado'].split('—')[0].strip()}</span>
             </div>
             <div class="accion-text">{u['accion']}</div>
-            <div style="margin-top:12px;font-family:'Share Tech Mono',monospace;font-size:11px;color:#4a90d9;opacity:0.7;">
+            <div style="margin-top:12px;font-family:'Share Tech Mono',monospace;font-size:11px;color:#64748b;">
                 ⏱ {u['timestamp']} &nbsp;|&nbsp; 📅 {u['fecha']}
             </div>
         </div>
         """, unsafe_allow_html=True)
 
         riesgo_pct  = max(u['proba_xgb'], u['proba_rf']) * 100
-        color_gauge = "#00e676" if riesgo_pct < 40 else ("#ffd740" if riesgo_pct < 70 else "#ff5252")
+        color_gauge = "#16a34a" if riesgo_pct < 40 else ("#d97706" if riesgo_pct < 70 else "#dc2626")
         fig_gauge   = go.Figure(go.Indicator(
             mode="gauge+number", value=riesgo_pct,
-            number={'suffix':'%','font':{'size':28,'color':color_gauge,'family':'Rajdhani'}},
-            title={'text':"NIVEL DE RIESGO",'font':{'size':12,'color':'#4a90d9','family':'Exo 2'}},
+            number={'suffix':'%','font':{'size':28,'color':color_gauge,'family':'Barlow Condensed'}},
+            title={'text':"NIVEL DE RIESGO",'font':{'size':12,'color':'#1e40af','family':'Barlow Condensed'}},
             gauge={
-                'axis':{'range':[0,100],'tickcolor':'#4a90d9','tickfont':{'color':'#4a90d9','size':9}},
+                'axis':{'range':[0,100],'tickcolor':'#94a3b8','tickfont':{'color':'#475569','size':9}},
                 'bar':{'color':color_gauge,'thickness':0.25},
-                'bgcolor':'rgba(0,0,0,0)','borderwidth':0,
+                'bgcolor':'rgba(255,255,255,0)','borderwidth':0,
                 'steps':[
-                    {'range':[0,40],  'color':'rgba(0,200,83,0.12)'},
-                    {'range':[40,70], 'color':'rgba(255,171,0,0.12)'},
-                    {'range':[70,100],'color':'rgba(255,23,68,0.12)'},
+                    {'range':[0,40],  'color':'rgba(22,163,74,0.1)'},
+                    {'range':[40,70], 'color':'rgba(217,119,6,0.1)'},
+                    {'range':[70,100],'color':'rgba(220,38,38,0.1)'},
                 ],
                 'threshold':{'line':{'color':color_gauge,'width':3},'thickness':0.8,'value':riesgo_pct},
             }
         ))
         fig_gauge.update_layout(
             height=200, margin=dict(l=20,r=20,t=30,b=10),
-            paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)',
-            font={'color':'#a8c8e8'}
+            paper_bgcolor='rgba(255,255,255,0)', plot_bgcolor='rgba(255,255,255,0)',
+            font={'color':'#334155'}
         )
         st.plotly_chart(fig_gauge, use_container_width=True)
     else:
@@ -636,16 +929,13 @@ with col_sensores:
         ]
         for icono, label, valor, sub in sensores:
             st.markdown(f"""
-            <div style="display:flex;justify-content:space-between;align-items:center;
-                        padding:10px 15px;margin:4px 0;border-radius:8px;
-                        background:rgba(10,21,37,0.8);border:1px solid rgba(30,58,95,0.6);">
+            <div class="sensor-row">
                 <div>
                     <span style="font-size:18px;">{icono}</span>
-                    <span style="color:#4a90d9;font-size:11px;letter-spacing:1px;
-                                 text-transform:uppercase;margin-left:8px;font-family:'Exo 2',sans-serif;">{label}</span>
-                    <div style="color:#607d8b;font-size:10px;margin-left:30px;margin-top:2px;">{sub}</div>
+                    <span class="sensor-label">{label}</span>
+                    <div class="sensor-sub">{sub}</div>
                 </div>
-                <div style="font-family:'Share Tech Mono',monospace;color:#00d4ff;font-size:18px;font-weight:bold;">{valor}</div>
+                <div class="sensor-value">{valor}</div>
             </div>
             """, unsafe_allow_html=True)
     else:
@@ -661,44 +951,45 @@ with col_pred:
         ]:
             clase_val   = "pred-value-danger" if pred == 1 else "pred-value-safe"
             estado_txt  = "⛔ FALLO" if pred == 1 else "✅ NORMAL"
-            color_barra = "#ff5252" if pred == 1 else "#00e676"
+            color_barra = "#dc2626" if pred == 1 else "#16a34a"
+            color_txt   = "#7f1d1d" if pred == 1 else "#166534"
             pct         = proba * 100
             st.markdown(f"""
-            <div style="background:rgba(10,21,37,0.8);border:1px solid rgba(30,58,95,0.6);
-                        border-radius:10px;padding:15px;margin-bottom:10px;">
+            <div class="pred-card">
                 <div class="pred-model-name">{modelo}</div>
-                <div class="{clase_val}" style="font-family:'Share Tech Mono',monospace;
-                     font-size:34px;font-weight:bold;line-height:1.1;">{pct:.1f}%</div>
-                <div style="font-size:12px;color:{'#ff8a80' if pred==1 else '#69f0ae'};
-                            margin:5px 0;font-family:'Exo 2',sans-serif;">{estado_txt}</div>
-                <div style="background:rgba(255,255,255,0.05);border-radius:4px;height:6px;margin-top:8px;">
-                    <div style="background:{color_barra};height:6px;border-radius:4px;
-                                width:{pct:.1f}%;box-shadow:0 0 8px {color_barra};"></div>
+                <div class="{clase_val}">{pct:.1f}%</div>
+                <div style="font-size:12px;color:{color_txt};margin:5px 0;font-family:'Barlow Condensed',sans-serif;font-weight:700;letter-spacing:1px;">{estado_txt}</div>
+                <div style="background:#f1f5f9;border-radius:4px;height:8px;margin-top:8px;">
+                    <div style="background:{color_barra};height:8px;border-radius:4px;width:{pct:.1f}%;"></div>
                 </div>
-                <div style="display:flex;justify-content:space-between;margin-top:4px;
-                            font-size:10px;color:#4a90d9;font-family:'Share Tech Mono',monospace;">
+                <div style="display:flex;justify-content:space-between;margin-top:4px;font-size:10px;color:#94a3b8;font-family:'Share Tech Mono',monospace;">
                     <span>0%</span><span>Umbral: {umbral*100:.1f}%</span><span>100%</span>
                 </div>
             </div>
             """, unsafe_allow_html=True)
 
         votos = u['votos']
-        colores_voto = {0:"#00e676", 1:"#ffd740", 2:"#ff5252"}
-        firebase_nota = ""
+        colores_voto = {0:"#16a34a", 1:"#d97706", 2:"#dc2626"}
+        bg_voto      = {0:"#dcfce7", 1:"#fef3c7", 2:"#fee2e2"}
+        border_voto  = {0:"#16a34a", 1:"#d97706", 2:"#dc2626"}
+        notas = []
         if firebase_disponible and votos > 0 and st.session_state.modo == 'Produccion':
-            firebase_nota = '<div style="font-size:10px;color:#ffc107;margin-top:6px;">🔥 Evento guardado en Firestore</div>'
+            notas.append('<div style="font-size:10px;color:#92400e;margin-top:4px;">🔥 Guardado en Firestore</div>')
+        if sheets_disponible and st.session_state.modo == 'Produccion':
+            notas.append('<div style="font-size:10px;color:#1e40af;margin-top:2px;">📊 Guardado en Google Sheets</div>')
+        notas_html = "".join(notas)
+
         st.markdown(f"""
-        <div style="background:rgba(0,212,255,0.05);border:1px solid rgba(0,212,255,0.2);
-                    border-radius:8px;padding:12px;text-align:center;">
-            <div style="font-family:'Rajdhani',sans-serif;font-size:13px;color:#4a90d9;letter-spacing:2px;">VOTOS POR FALLO</div>
-            <div style="font-family:'Share Tech Mono',monospace;font-size:32px;
-                        color:{colores_voto[votos]};text-shadow:0 0 15px {colores_voto[votos]};">
+        <div style="background:{bg_voto[votos]};border:2px solid {border_voto[votos]};
+                    border-radius:10px;padding:14px;text-align:center;margin-top:4px;">
+            <div style="font-family:'Barlow Condensed',sans-serif;font-size:13px;color:#475569;letter-spacing:2px;font-weight:700;">VOTOS POR FALLO</div>
+            <div style="font-family:'Share Tech Mono',monospace;font-size:34px;color:{colores_voto[votos]};font-weight:bold;">
                 {votos} / 2
             </div>
-            <div style="font-size:10px;color:#607d8b;font-family:'Exo 2',sans-serif;">
+            <div style="font-size:11px;color:#64748b;font-family:'Barlow',sans-serif;">
                 {'Consenso de falla detectado' if votos==2 else ('Un modelo detecta riesgo' if votos==1 else 'Sin detección de falla')}
             </div>
-            {firebase_nota}
+            {notas_html}
         </div>
         """, unsafe_allow_html=True)
     else:
@@ -715,7 +1006,7 @@ with col_n:
         <span class="counter-icon">🟢</span>
         <div class="counter-number-normal">{st.session_state.contador_normal}</div>
         <div class="counter-label counter-label-normal">OPERACIÓN NORMAL</div>
-        <div style="font-size:11px;color:#2e7d50;margin-top:6px;font-family:'Exo 2',sans-serif;">Todo funciona correctamente</div>
+        <div class="counter-sub">Todo funciona correctamente</div>
     </div>""", unsafe_allow_html=True)
 with col_a:
     st.markdown(f"""
@@ -723,7 +1014,7 @@ with col_a:
         <span class="counter-icon">🟡</span>
         <div class="counter-number-aviso">{st.session_state.contador_aviso}</div>
         <div class="counter-label counter-label-aviso">AVISOS PREVENTIVOS</div>
-        <div style="font-size:11px;color:#7a5c00;margin-top:6px;font-family:'Exo 2',sans-serif;">Revisar antes de continuar</div>
+        <div class="counter-sub">Revisar antes de continuar</div>
     </div>""", unsafe_allow_html=True)
 with col_r:
     st.markdown(f"""
@@ -731,7 +1022,7 @@ with col_r:
         <span class="counter-icon">🔴</span>
         <div class="counter-number-alerta">{st.session_state.contador_alerta}</div>
         <div class="counter-label counter-label-alerta">ALERTAS CRÍTICAS</div>
-        <div style="font-size:11px;color:#7a0000;margin-top:6px;font-family:'Exo 2',sans-serif;">Detener máquina inmediatamente</div>
+        <div class="counter-sub">Detener máquina inmediatamente</div>
     </div>""", unsafe_allow_html=True)
 
 # ============================================
@@ -745,39 +1036,39 @@ if len(st.session_state.probabilidades_xgb) > 1:
     fig_prob = go.Figure()
     fig_prob.add_trace(go.Scatter(
         x=xs, y=st.session_state.probabilidades_xgb, name='XGBoost',
-        mode='lines+markers', line=dict(color='#00d4ff', width=2.5),
-        marker=dict(size=5, color='#00d4ff', symbol='circle'),
-        fill='tozeroy', fillcolor='rgba(0,212,255,0.08)'
+        mode='lines+markers', line=dict(color='#2563eb', width=2.5),
+        marker=dict(size=5, color='#2563eb', symbol='circle'),
+        fill='tozeroy', fillcolor='rgba(37,99,235,0.08)'
     ))
     fig_prob.add_trace(go.Scatter(
         x=xs, y=st.session_state.probabilidades_rf, name='Random Forest',
-        mode='lines+markers', line=dict(color='#69f0ae', width=2.5),
-        marker=dict(size=5, color='#69f0ae', symbol='diamond'),
-        fill='tozeroy', fillcolor='rgba(105,240,174,0.08)'
+        mode='lines+markers', line=dict(color='#16a34a', width=2.5),
+        marker=dict(size=5, color='#16a34a', symbol='diamond'),
+        fill='tozeroy', fillcolor='rgba(22,163,74,0.08)'
     ))
-    fig_prob.add_hline(y=umbral_xgb, line_dash="dash", line_color="#00d4ff", line_width=1.5,
+    fig_prob.add_hline(y=umbral_xgb, line_dash="dash", line_color="#2563eb", line_width=1.5,
                        annotation_text=f"Umbral XGB ({umbral_xgb:.2f})",
-                       annotation_font_color="#00d4ff", annotation_font_size=11)
-    fig_prob.add_hline(y=umbral_rf, line_dash="dash", line_color="#69f0ae", line_width=1.5,
+                       annotation_font_color="#2563eb", annotation_font_size=11)
+    fig_prob.add_hline(y=umbral_rf, line_dash="dash", line_color="#16a34a", line_width=1.5,
                        annotation_text=f"Umbral RF ({umbral_rf:.2f})",
-                       annotation_font_color="#69f0ae", annotation_font_size=11)
+                       annotation_font_color="#16a34a", annotation_font_size=11)
     fig_prob.add_hrect(y0=max(umbral_xgb, umbral_rf), y1=1.0,
-                       fillcolor="rgba(255,23,68,0.06)", line_width=0,
+                       fillcolor="rgba(220,38,38,0.05)", line_width=0,
                        annotation_text="⚠ ZONA CRÍTICA", annotation_position="top left",
-                       annotation_font_color="#ff5252", annotation_font_size=10)
+                       annotation_font_color="#dc2626", annotation_font_size=10)
     fig_prob.update_layout(
         height=320, margin=dict(l=10,r=10,t=20,b=10),
-        paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(10,21,37,0.6)',
+        paper_bgcolor='rgba(255,255,255,1)', plot_bgcolor='rgba(248,250,252,1)',
         legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1,
-                    font=dict(color='#a8c8e8', family='Exo 2', size=11),
-                    bgcolor='rgba(0,0,0,0)', bordercolor='rgba(0,0,0,0)'),
+                    font=dict(color='#334155', family='Barlow', size=12),
+                    bgcolor='rgba(255,255,255,0.8)', bordercolor='#e2e8f0', borderwidth=1),
         yaxis=dict(range=[0,1.05], title="Probabilidad de Fallo",
-                   gridcolor='rgba(30,58,95,0.4)', tickfont=dict(color='#4a90d9', size=10),
-                   title_font=dict(color='#4a90d9', size=12), zeroline=False),  # ← CAMBIADO
+                   gridcolor='#e2e8f0', tickfont=dict(color='#475569', size=10),
+                   title_font=dict(color='#1e40af', size=12), zeroline=False),
         xaxis=dict(title="Número de Lectura",
-                  gridcolor='rgba(30,58,95,0.4)', tickfont=dict(color='#4a90d9', size=10),
-                   title_font=dict(color='#4a90d9', size=12)),
-        font=dict(family='Exo 2')
+                   gridcolor='#e2e8f0', tickfont=dict(color='#475569', size=10),
+                   title_font=dict(color='#1e40af', size=12)),
+        font=dict(family='Barlow')
     )
     st.plotly_chart(fig_prob, use_container_width=True)
 else:
@@ -797,10 +1088,10 @@ if len(st.session_state.temperaturas) > 1:
         vertical_spacing=0.18, horizontal_spacing=0.1
     )
     trazas = [
-        (st.session_state.temperaturas, '#ff6b6b', 'rgba(255,107,107,0.1)', 'Temp',    1, 1),
-        (st.session_state.rpms,         '#4ecdc4', 'rgba(78,205,196,0.1)',  'RPM',     1, 2),
-        (st.session_state.torques,      '#ffd93d', 'rgba(255,217,61,0.1)', 'Torque',  2, 1),
-        (st.session_state.desgastes,    '#c77dff', 'rgba(199,125,255,0.1)','Desgaste',2, 2),
+        (st.session_state.temperaturas, '#dc2626', 'rgba(220,38,38,0.08)',   'Temp',    1, 1),
+        (st.session_state.rpms,         '#2563eb', 'rgba(37,99,235,0.08)',   'RPM',     1, 2),
+        (st.session_state.torques,      '#d97706', 'rgba(217,119,6,0.08)',   'Torque',  2, 1),
+        (st.session_state.desgastes,    '#7c3aed', 'rgba(124,58,237,0.08)', 'Desgaste',2, 2),
     ]
     for datos_y, color, fill_color, nombre, row, col in trazas:
         fig_sensores.add_trace(go.Scatter(
@@ -809,17 +1100,17 @@ if len(st.session_state.temperaturas) > 1:
         ), row=row, col=col)
     fig_sensores.update_layout(
         height=420, showlegend=False,
-        paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(10,21,37,0.6)',
+        paper_bgcolor='rgba(255,255,255,1)', plot_bgcolor='rgba(248,250,252,1)',
         margin=dict(l=10,r=10,t=40,b=10),
-        font=dict(color='#a8c8e8', family='Exo 2', size=10)
+        font=dict(color='#334155', family='Barlow', size=10)
     )
-    fig_sensores.update_annotations(font_size=12, font_color='#4a90d9')
+    fig_sensores.update_annotations(font_size=12, font_color='#1e40af')
     for row in [1,2]:
         for col in [1,2]:
-            fig_sensores.update_xaxes(gridcolor='rgba(30,58,95,0.4)', zeroline=False,
-                                      tickfont=dict(color='#4a90d9', size=9), row=row, col=col)
-            fig_sensores.update_yaxes(gridcolor='rgba(30,58,95,0.4)', zeroline=False,
-                                      tickfont=dict(color='#4a90d9', size=9), row=row, col=col)
+            fig_sensores.update_xaxes(gridcolor='#e2e8f0', zeroline=False,
+                                      tickfont=dict(color='#475569', size=9), row=row, col=col)
+            fig_sensores.update_yaxes(gridcolor='#e2e8f0', zeroline=False,
+                                      tickfont=dict(color='#475569', size=9), row=row, col=col)
     st.plotly_chart(fig_sensores, use_container_width=True)
 else:
     st.info("⏳ Esperando datos de sensores para los gráficos...")
@@ -837,20 +1128,21 @@ if st.session_state.lecturas_procesadas > 0:
                     st.session_state.contador_aviso,
                     st.session_state.contador_alerta],
             hole=0.55,
-            marker=dict(colors=['#00e676','#ffd740','#ff5252'],
-                        line=dict(color='#060d18', width=3)),
-            textfont=dict(family='Exo 2', size=12, color='white'),
+            marker=dict(colors=['#16a34a','#d97706','#dc2626'],
+                        line=dict(color='#ffffff', width=3)),
+            textfont=dict(family='Barlow', size=12, color='white'),
             hovertemplate='<b>%{label}</b><br>Cantidad: %{value}<br>Porcentaje: %{percent}<extra></extra>'
         ))
         fig_pie.add_annotation(
             text=f"<b>{st.session_state.lecturas_procesadas}</b><br><span style='font-size:10px'>lecturas</span>",
-            x=0.5, y=0.5, font=dict(size=16, color='#a8c8e8', family='Rajdhani'), showarrow=False
+            x=0.5, y=0.5, font=dict(size=16, color='#0f172a', family='Barlow Condensed'), showarrow=False
         )
         fig_pie.update_layout(
             height=300, margin=dict(l=20,r=20,t=20,b=20),
-            paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)',
+            paper_bgcolor='rgba(255,255,255,1)', plot_bgcolor='rgba(255,255,255,1)',
             showlegend=True,
-            legend=dict(font=dict(color='#a8c8e8', family='Exo 2', size=11), bgcolor='rgba(0,0,0,0)')
+            legend=dict(font=dict(color='#334155', family='Barlow', size=12),
+                        bgcolor='rgba(255,255,255,0.9)', bordercolor='#e2e8f0', borderwidth=1)
         )
         st.plotly_chart(fig_pie, use_container_width=True)
 
@@ -865,29 +1157,30 @@ if st.session_state.lecturas_procesadas > 0:
             fig_bar = go.Figure()
             fig_bar.add_trace(go.Bar(
                 name='XGBoost', x=categorias, y=[v*100 for v in vals_xgb],
-                marker=dict(color='#00d4ff', opacity=0.85, line=dict(color='#00d4ff', width=1)),
+                marker=dict(color='#2563eb', opacity=0.9, line=dict(color='#1d4ed8', width=1)),
                 text=[f"{v*100:.1f}%" for v in vals_xgb], textposition='outside',
-                textfont=dict(color='#00d4ff', size=11, family='Share Tech Mono')
+                textfont=dict(color='#1e40af', size=11, family='Share Tech Mono')
             ))
             fig_bar.add_trace(go.Bar(
                 name='Random Forest', x=categorias, y=[v*100 for v in vals_rf],
-                marker=dict(color='#69f0ae', opacity=0.85, line=dict(color='#69f0ae', width=1)),
+                marker=dict(color='#16a34a', opacity=0.9, line=dict(color='#15803d', width=1)),
                 text=[f"{v*100:.1f}%" for v in vals_rf], textposition='outside',
-                textfont=dict(color='#69f0ae', size=11, family='Share Tech Mono')
+                textfont=dict(color='#166534', size=11, family='Share Tech Mono')
             ))
-            fig_bar.add_hline(y=umbral_xgb*100, line_dash="dot", line_color="#00d4ff", line_width=1,
+            fig_bar.add_hline(y=umbral_xgb*100, line_dash="dot", line_color="#2563eb", line_width=1.5,
                               annotation_text="Umbral XGB",
-                              annotation_font_color="#00d4ff", annotation_font_size=10)
+                              annotation_font_color="#2563eb", annotation_font_size=10)
             fig_bar.update_layout(
                 height=300, barmode='group',
                 margin=dict(l=10,r=10,t=20,b=10),
-                paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(10,21,37,0.6)',
-                legend=dict(font=dict(color='#a8c8e8', family='Exo 2', size=11), bgcolor='rgba(0,0,0,0)'),
-                yaxis=dict(range=[0,115], gridcolor='rgba(30,58,95,0.4)',
-                           tickfont=dict(color='#4a90d9', size=9),
-                           title='Probabilidad (%)', title_font=dict(color='#4a90d9', size=11),  # ← CAMBIADO
+                paper_bgcolor='rgba(255,255,255,1)', plot_bgcolor='rgba(248,250,252,1)',
+                legend=dict(font=dict(color='#334155', family='Barlow', size=12),
+                            bgcolor='rgba(255,255,255,0.9)', bordercolor='#e2e8f0', borderwidth=1),
+                yaxis=dict(range=[0,115], gridcolor='#e2e8f0',
+                           tickfont=dict(color='#475569', size=9),
+                           title='Probabilidad (%)', title_font=dict(color='#1e40af', size=11),
                            zeroline=False),
-                xaxis=dict(gridcolor='rgba(30,58,95,0.4)', tickfont=dict(color='#4a90d9', size=10))
+                xaxis=dict(gridcolor='#e2e8f0', tickfont=dict(color='#475569', size=10))
             )
             st.plotly_chart(fig_bar, use_container_width=True)
         else:
@@ -909,10 +1202,10 @@ if len(st.session_state.historial) > 0:
 
     def color_fila(val):
         if 'ALERTA' in str(val) or 'ROJA' in str(val):
-            return 'background-color:#2a0000;color:#ff5252;font-weight:bold'
+            return 'background-color:#fee2e2;color:#7f1d1d;font-weight:bold'
         elif 'AVISO' in str(val) or 'PREVENT' in str(val):
-            return 'background-color:#2a1a00;color:#ffd740;font-weight:bold'
-        return 'background-color:#0a2a1a;color:#00e676'
+            return 'background-color:#fef3c7;color:#78350f;font-weight:bold'
+        return 'background-color:#dcfce7;color:#14532d'
 
     st.dataframe(df_hist.style.map(color_fila, subset=['Estado']),
                  use_container_width=True, height=300)
@@ -1024,36 +1317,38 @@ if not es_simulacion and st.session_state.mqtt_conectado and st.session_state.co
 # LEYENDA EXPLICATIVA
 # ============================================
 st.markdown("""
-<div style="background:rgba(10,21,37,0.8);border:1px solid rgba(30,58,95,0.6);
-            border-radius:10px;padding:15px 25px;margin:15px 0;
-            font-family:'Exo 2',sans-serif;font-size:12px;">
-    <div style="color:#4a90d9;font-size:11px;letter-spacing:2px;text-transform:uppercase;
-                margin-bottom:12px;font-weight:600;">📖 GUÍA RÁPIDA DE ESTADOS</div>
+<div class="legend-box">
+    <div class="legend-title">📖 GUÍA RÁPIDA DE ESTADOS</div>
     <div style="display:flex;gap:30px;flex-wrap:wrap;justify-content:space-around;">
         <div style="text-align:center;">
             <div style="font-size:24px;">🟢</div>
-            <div style="color:#00e676;font-weight:700;margin:4px 0;">NORMAL</div>
-            <div style="color:#607d8b;font-size:11px;">Ambos modelos predicen<br>operación sin riesgo</div>
+            <div style="color:#15803d;font-weight:700;margin:4px 0;font-family:'Barlow Condensed',sans-serif;font-size:16px;letter-spacing:1px;">NORMAL</div>
+            <div style="color:#475569;font-size:11px;">Ambos modelos predicen<br>operación sin riesgo</div>
         </div>
         <div style="text-align:center;">
             <div style="font-size:24px;">🟡</div>
-            <div style="color:#ffd740;font-weight:700;margin:4px 0;">AVISO</div>
-            <div style="color:#607d8b;font-size:11px;">1 modelo detecta riesgo.<br>Monitorear de cerca</div>
+            <div style="color:#b45309;font-weight:700;margin:4px 0;font-family:'Barlow Condensed',sans-serif;font-size:16px;letter-spacing:1px;">AVISO</div>
+            <div style="color:#475569;font-size:11px;">1 modelo detecta riesgo.<br>Monitorear de cerca</div>
         </div>
         <div style="text-align:center;">
             <div style="font-size:24px;">🔴</div>
-            <div style="color:#ff5252;font-weight:700;margin:4px 0;">ALERTA</div>
-            <div style="color:#607d8b;font-size:11px;">Ambos modelos detectan falla.<br>Detener máquina YA</div>
+            <div style="color:#b91c1c;font-weight:700;margin:4px 0;font-family:'Barlow Condensed',sans-serif;font-size:16px;letter-spacing:1px;">ALERTA</div>
+            <div style="color:#475569;font-size:11px;">Ambos modelos detectan falla.<br>Detener máquina YA</div>
         </div>
         <div style="text-align:center;">
             <div style="font-size:24px;">🤖</div>
-            <div style="color:#00d4ff;font-weight:700;margin:4px 0;">CONSENSO</div>
-            <div style="color:#607d8b;font-size:11px;">XGBoost + Random Forest<br>votan en conjunto</div>
+            <div style="color:#1e40af;font-weight:700;margin:4px 0;font-family:'Barlow Condensed',sans-serif;font-size:16px;letter-spacing:1px;">CONSENSO</div>
+            <div style="color:#475569;font-size:11px;">XGBoost + Random Forest<br>votan en conjunto</div>
         </div>
         <div style="text-align:center;">
             <div style="font-size:24px;">🔥</div>
-            <div style="color:#ffc107;font-weight:700;margin:4px 0;">FIREBASE</div>
-            <div style="color:#607d8b;font-size:11px;">Avisos y alertas guardados<br>en Firestore (Producción)</div>
+            <div style="color:#92400e;font-weight:700;margin:4px 0;font-family:'Barlow Condensed',sans-serif;font-size:16px;letter-spacing:1px;">FIREBASE</div>
+            <div style="color:#475569;font-size:11px;">Avisos y alertas guardados<br>en Firestore (Producción)</div>
+        </div>
+        <div style="text-align:center;">
+            <div style="font-size:24px;">📊</div>
+            <div style="color:#1e40af;font-weight:700;margin:4px 0;font-family:'Barlow Condensed',sans-serif;font-size:16px;letter-spacing:1px;">SHEETS</div>
+            <div style="color:#475569;font-size:11px;">Todas las lecturas guardadas<br>en Google Sheets (Producción)</div>
         </div>
     </div>
 </div>
@@ -1062,12 +1357,13 @@ st.markdown("""
 # ============================================
 # FOOTER
 # ============================================
-firebase_status = "🔥 Firebase Firestore ACTIVO" if firebase_disponible else "🔥 Firebase NO disponible"
+firebase_status = "🔥 Firebase ACTIVO" if firebase_disponible else "🔥 Firebase NO disponible"
+sheets_status   = "📊 Google Sheets ACTIVO" if sheets_disponible else "📊 Sheets NO disponible"
 st.markdown(
     f'<div class="footer">'
     f'⚙ SISTEMA DE MANTENIMIENTO PREDICTIVO — TORNO HORIZONTAL &nbsp;|&nbsp; '
     f'XGBoost (umbral={umbral_xgb:.2f}) + Random Forest (umbral={umbral_rf:.2f}) &nbsp;|&nbsp; '
-    f'HiveMQ Cloud TLS &nbsp;|&nbsp; Consenso de Doble Verificación &nbsp;|&nbsp; {firebase_status}'
+    f'HiveMQ Cloud TLS &nbsp;|&nbsp; {firebase_status} &nbsp;|&nbsp; {sheets_status}'
     f'</div>',
     unsafe_allow_html=True
 )
